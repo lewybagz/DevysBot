@@ -11,12 +11,18 @@
   "license": "ISC",
   "dependencies": {
     "@discordjs/voice": "^0.17.0",
+    "@napi-rs/canvas": "^0.1.56",
     "bufferutil": "^4.0.8",
-    "discord.js": "^14.16.3",
+    "discord.js": "^14.16.2",
     "dotenv": "^16.4.5",
+    "play-dl": "^1.9.7",
+    "svg-captcha": "^1.4.0",
     "utf-8-validate": "^6.0.4"
   },
   "devDependencies": {
+    "@eslint/js": "^9.11.1",
+    "eslint": "^9.11.1",
+    "globals": "^15.10.0",
     "nodemon": "^3.1.7"
   }
 }

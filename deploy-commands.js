@@ -1,7 +1,7 @@
 // deploy-commands.js
 require("dotenv").config();
 const { REST, Routes, SlashCommandBuilder } = require("discord.js");
-const cacheManager = require("../cacheManager");
+const cacheManager = require("../utils/cacheManager");
 
 const commands = [
   new SlashCommandBuilder()
@@ -24,6 +24,15 @@ const commands = [
             .getAllRoles() // Access the cached roles
             .map((role) => ({ name: role.name, value: role.id }))
         )
+    ),
+  new SlashCommandBuilder()
+    .setName("play")
+    .setDescription("Play a YouTube video or playlist in a voice channel")
+    .addStringOption((option) =>
+      option
+        .setName("url")
+        .setDescription("The YouTube video or playlist URL")
+        .setRequired(true)
     ),
 ].map((command) => command.toJSON());
 

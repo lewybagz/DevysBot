@@ -1,6 +1,6 @@
 // utils/channelUpdater.js
 const config = require("../config");
-const cacheManager = require("../cacheManager");
+const cacheManager = require("./cacheManager");
 
 function calculateMemberGoal(totalMembers, currentGoal) {
   // Double the goal if total members meet or exceed the current goal
@@ -9,8 +9,6 @@ function calculateMemberGoal(totalMembers, currentGoal) {
   }
   return currentGoal; // Otherwise, keep the current goal
 }
-
-let peakOnline = 0; // Keep track of peak online members
 
 // Function to update the channel names
 async function updateChannelNames(client) {

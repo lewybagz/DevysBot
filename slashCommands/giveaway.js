@@ -1,9 +1,9 @@
 // slashCommands/giveaway.js
 require("dotenv").config();
 const config = require("../config.js"); // If using config.js
-const cacheManager = require("../cacheManager.js");
+const cacheManager = require("../utils/cacheManager.js");
 
-async function handleGiveawayCommand(interaction) {
+async function handleGiveawayCommand(interaction, client) {
   try {
     await interaction.deferReply({ ephemeral: true });
 
@@ -51,7 +51,7 @@ async function handleGiveawayCommand(interaction) {
     });
 
     // Fetch the giveaway channel
-    const giveawayChannel = guild.channels.cache.get(giveawayChannelId);
+    const giveawayChannel = guild.channels.cache.get(config.giveawayChannelId);
     if (!giveawayChannel) {
       await interaction.editReply("Giveaway channel not found.");
       return;
@@ -63,6 +63,20 @@ async function handleGiveawayCommand(interaction) {
     )}! You have won the giveaway!** 🎉`;
 
     await giveawayChannel.send(announcement);
+
+    // Set the bot's activity to announce the winners
+    client.user.setActivity(`Giving prizes to ${winnerUsernames.join(", ")}`, {
+      type: "PLAYING",
+    });
+
+    // Keep this activity for 1 hour
+    setTimeout(3600000).then(() => {
+      // After 1 hour, reset the bot's activity to the default from ready.js
+      client.user.setActivity(
+        "Playing Operation LoveCraft: Fallen Doll(Ranked)",
+        { type: "PLAYING" }
+      ); // You can make this match what you have in ready.js
+    });
 
     // Confirm the giveaway to the command user
     await interaction.editReply("Giveaway completed and winner(s) announced!");
