@@ -21,7 +21,6 @@ async function updateChannelNames(client) {
   const onlineMembers = cacheManager.getOnlineMemberCount();
 
   // Update peak online
-  cacheManager.updatePeakOnline();
   const peakOnline = cacheManager.getPeakOnline();
 
   // Calculate dynamic member goal
@@ -44,11 +43,10 @@ async function updateChannelNames(client) {
 
   // Update the channel names
   if (onlineMembersChannel)
-    await onlineMembersChannel.setName(
-      `Current Members Online: ${onlineMembers}`
-    );
+    await onlineMembersChannel.setName(`Current Online: ${onlineMembers}`);
   if (peakOnlineChannel)
-    await peakOnlineChannel.setName(`Peak Members Online: ${peakOnline}`);
+    // TODO: set font
+    await peakOnlineChannel.setName(`Peak Online: ${peakOnline}`);
   if (totalMembersChannel)
     await totalMembersChannel.setName(`Total Members: ${totalMembers}`);
   if (memberGoalChannel)

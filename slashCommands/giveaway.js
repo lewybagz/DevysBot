@@ -2,6 +2,7 @@
 require("dotenv").config();
 const config = require("../config.js"); // If using config.js
 const cacheManager = require("../utils/cacheManager.js");
+const { EmbedBuilder } = require("discord.js");
 
 async function handleGiveawayCommand(interaction, client) {
   try {
@@ -13,8 +14,6 @@ async function handleGiveawayCommand(interaction, client) {
 
     // Split roles if more than one was selected (comma-separated)
     const selectedRoleIds = rolesInput ? rolesInput.split(",") : [];
-
-    const guild = interaction.guild;
 
     // Collect participants with at least one of the selected roles
     let participantIds = [];
@@ -45,24 +44,33 @@ async function handleGiveawayCommand(interaction, client) {
     const winnerIds = shuffleArray(participantIds).slice(0, numberOfWinners);
 
     // Get winner usernames
-    const winnerUsernames = winnerIds.map((userId) => {
-      const username = cacheManager.getUsername(userId);
-      return username ? `<@${userId}> (${username})` : `<@${userId}>`;
+    const winnerDetails = winnerIds.map((userId) => {
+      const userInfo = cacheManager.getUserInfo(userId);
+
+      return {
+        value: `${userInfo.profilePicture}`,
+        name: `${userInfo.username}`,
+        inline: false,
+      };
     });
 
-    // Fetch the giveaway channel
-    const giveawayChannel = guild.channels.cache.get(config.giveawayChannelId);
-    if (!giveawayChannel) {
-      await interaction.editReply("Giveaway channel not found.");
-      return;
-    }
+    const winnerUsernames = winnerIds.map((userId) => {
+      const userInfo = cacheManager.getUserInfo(userId);
+      return userInfo ? userInfo.username : "Unknown"; // Get username from cacheManager
+    });
 
-    // Announce the winner(s)
-    const announcement = `🎉 **Congratulations ${winnerUsernames.join(
-      ", "
-    )}! You have won the giveaway!** 🎉`;
+    const giveawayChannel = config.giveawayChannelId;
 
-    await giveawayChannel.send(announcement);
+    // Create a rich embed message
+    const embed = new EmbedBuilder()
+      .setTitle("🎉 Giveaway Winners! 🎉")
+      .setColor("#00FF00") // Green for success
+      .setDescription("Congratulations to the following winners:")
+      .addFields(winnerDetails) // Add winners' details
+      .setTimestamp();
+
+    // Send the embed to the giveaway channel
+    await giveawayChannel.send({ embeds: [embed] });
 
     // Set the bot's activity to announce the winners
     client.user.setActivity(`Giving prizes to ${winnerUsernames.join(", ")}`, {

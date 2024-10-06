@@ -1,10 +1,9 @@
 const fs = require("fs");
 const path = require("path");
 
-const __dirname = path.resolve();
-
 module.exports = (client) => {
   // Get all event files in the 'events' directory
+  // eslint-disable-next-line no-undef
   const eventsPath = path.join(__dirname, "../events"); // __dirname works in CommonJS
   const eventFiles = fs
     .readdirSync(eventsPath)

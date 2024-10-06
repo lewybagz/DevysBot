@@ -4,11 +4,15 @@ const {
   createAudioResource,
   AudioPlayerStatus,
 } = require("@discordjs/voice");
+const { EmbedBuilder } = require("discord.js");
 const play = require("play-dl");
 
-async function handlePlayCommand(interaction, client) {
+let player;
+
+async function handlePlayCommand(interaction, client, musicState) {
   const url = interaction.options.getString("url");
   const voiceChannel = interaction.member.voice.channel;
+  const guildId = interaction.guild.id;
 
   if (!voiceChannel) {
     return interaction.reply(
@@ -23,15 +27,31 @@ async function handlePlayCommand(interaction, client) {
     );
   }
 
-  // Join the voice channel
-  const connection = joinVoiceChannel({
-    channelId: voiceChannel.id,
-    guildId: interaction.guild.id,
-    adapterCreator: interaction.guild.voiceAdapterCreator,
-  });
+  let { connection, playlistQueue } = musicState.get(guildId);
 
-  // Create an audio player
-  const player = createAudioPlayer();
+  // Join the voice channel
+  if (!connection) {
+    connection = joinVoiceChannel({
+      channelId: voiceChannel.id,
+      guildId: interaction.guild.id,
+      adapterCreator: interaction.guild.voiceAdapterCreator,
+    });
+    musicState.set(guildId, { connection, playlistQueue });
+  }
+
+  if (play.is_playlist(url)) {
+    const playlist = await play.playlist_info(url);
+    playlistQueue.push(...playlist.videos.map((video) => video.url));
+    musicState.set(guildId, { connection, playlistQueue });
+  } else {
+    playlistQueue.push(url);
+    musicState.set(guildId, { connection, playlistQueue });
+  }
+
+  // Create the player only if it doesn't exist already
+  if (!player) {
+    player = createAudioPlayer();
+  }
   connection.subscribe(player);
 
   // Play the provided video or fetch playlist first video
@@ -51,9 +71,16 @@ async function playVideo(url, player, connection, interaction, client) {
 
     // Send the response to the user
     const videoInfo = await play.video_info(url);
-    await interaction.followUp(
-      `Now playing: **${videoInfo.video_details.title}**`
-    );
+
+    const embed = new EmbedBuilder()
+      .setColor("#1E90FF") // Blue color
+      .setTitle("Now Playing")
+      .setDescription(`**${videoInfo.video_details.title}**`) // Bold song title
+      .setURL(videoInfo.video_details.url) // URL to the video
+      .setTimestamp(); // Adds a timestamp at the bottom of the embed
+
+    // Send the embedded message as a follow-up
+    await interaction.followUp({ embeds: [embed] });
 
     // Set custom activity for the bot (Now playing: video title)
     client.user.setActivity(`Listening to: ${videoInfo.video_details.title}`, {
@@ -82,4 +109,4 @@ async function playVideo(url, player, connection, interaction, client) {
   }
 }
 
-module.exports = { handlePlayCommand };
+module.exports = { handlePlayCommand, getPlayer: () => player };
