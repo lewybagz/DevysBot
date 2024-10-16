@@ -37,10 +37,13 @@ module.exports = {
         )
     ),
   execute: async ({ interaction }) => {
-    if (!interaction.guild) {
-      await interaction.reply("This command can only be used in a server.");
-      return;
+    if (!interaction.guild.members.me.permissions.has(['CONNECT', 'SPEAK'])) {
+      return interaction.reply({
+        content: 'I need permission to connect and speak in this voice channel!',
+        ephemeral: true,
+      });
     }
+
 
     const member =
       interaction.member ??
@@ -60,13 +63,14 @@ module.exports = {
         client: interaction.guild.members.me,
         requestedBy: interaction.user,
       },
-      selfDeaf: true,
+      selfDeaf: false, // <--- THIS LINE was true
       volume: 100,
       leaveOnEmpty: true,
       leaveOnEmptyCooldown: 300000,
       leaveOnEnd: true,
       leaveOnEndCooldown: 300000,
     });
+
 
     if (!queue.connection) {
       if (!member.voice.channel) {
@@ -107,13 +111,16 @@ module.exports = {
         const song = result.tracks[0];
         console.log("Song to be added:", song);
 
-        const queue = client.player.nodes.create(interaction.guild, {
+        const queue = client.player.nodes.get(interaction.guild.id) || 
+        client.player.nodes.create(interaction.guild, {
           metadata: {
             channel: interaction.channel,
             client: interaction.guild.members.me,
             requestedBy: interaction.user,
           },
+          selfDeaf: false,  // Make sure this is set
         });
+
 
         try {
           if (!queue.connection)
@@ -187,7 +194,9 @@ module.exports = {
         .setFooter({ text: `Duration: ${song.durationRaw}` });
     }
 
+    console.log('Is the queue playing:', queue.playing);
     if (!queue.playing) await queue.play();
+
 
     await interaction.reply({
       embeds: [embed],
