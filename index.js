@@ -1,20 +1,11 @@
-require("dotenv").config();
-const { Client, GatewayIntentBits } = require("discord.js");
+const { Client, GatewayIntentBits, Collection } = require("discord.js");
 const config = require("./config.js");
-const { handleGiveawayCommand } = require("./slashCommands/giveaway.js");
-const { handlePlayCommand } = require("./slashCommands/play.js");
-const {
-  handlePauseCommand,
-  handleResumeCommand,
-  handleStopCommand,
-  handleSkipCommand,
-  handleRepeatCommand,
-  handleShuffleCommand,
-} = require("./slashCommands/controls");
+const { Player } = require("discord-player");
+const { YouTubeExtractor } = require("@discord-player/extractor");
 const loadEvents = require("./utils/loadEvents");
-const { getPlayer } = require("./slashCommands/play");
 const cacheManager = require("./utils/cacheManager");
-
+const initCaptchaVerification = require("./events/guildMemberAdd");
+const XPSystem = require("./utils/xpSystem");
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -22,44 +13,99 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildPresences,
+    GatewayIntentBits.DirectMessages,
+    GatewayIntentBits.GuildVoiceStates,
   ],
 });
+const fs = require("fs");
+const path = require("path");
 
-// Dynamically load all events
-loadEvents(client);
+client.commands = new Collection();
 
-const musicState = new Map();
+const xpSystem = new XPSystem(client);
+
+async function initializeBot() {
+  console.log("Initializing bot...");
+  //
+  // Load commands into memory
+  // eslint-disable-next-line no-undef
+  const commandsPath = path.join(__dirname, "slashCommands");
+  const commandFiles = fs
+    .readdirSync(commandsPath)
+    .filter((file) => file.endsWith(".js"));
+
+  for (const file of commandFiles) {
+    const filePath = path.join(commandsPath, file);
+    const command = require(filePath);
+    if ("data" in command && "execute" in command) {
+      client.commands.set(command.data.name, command);
+    } else {
+      console.log(
+        `[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`
+      );
+    }
+  }
+
+  client.player = new Player(client, {
+    ytdlOptions: {
+      quality: "highestaudio",
+      highWaterMark: 1 << 25,
+    },
+    opusEncoder: require("opusscript"),
+  });
+
+  // Load extractors
+  await client.player.extractors.loadDefault();
+  await client.player.extractors.register(YouTubeExtractor, {});
+
+  client.xpSystem = new XPSystem(client);
+  await client.xpSystem.loadXPData();
+  client.xpSystem.startVoiceXPTracker();
+
+  // Dynamically load all events
+  loadEvents(client);
+  initCaptchaVerification(client);
+
+  await client.login(config.token);
+  console.log("Bot initialized and logged in");
+}
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isCommand()) return;
 
-  const guildId = interaction.guild.id;
+  const command = client.commands.get(interaction.commandName);
 
-  const player = getPlayer();
-
-  if (!musicState.has(guildId)) {
-    musicState.set(guildId, { connection: null, playlistQueue: [] });
+  if (!command) {
+    console.error(`No command matching ${interaction.commandName} was found.`);
+    return;
   }
 
-  const { connection, playlistQueue } = musicState.get(guildId);
-
-  if (interaction.commandName === "giveaway") {
-    await handleGiveawayCommand(interaction);
-  } else if (interaction.commandName === "play") {
-    await handlePlayCommand(interaction);
-  } else if (interaction.commandName === "pause") {
-    await handlePauseCommand(interaction, player);
-  } else if (interaction.commandName === "resume") {
-    await handleResumeCommand(interaction, player);
-  } else if (interaction.commandName === "stop") {
-    await handleStopCommand(interaction, player, connection);
-  } else if (interaction.commandName === "skip") {
-    await handleSkipCommand(interaction, player, connection, playlistQueue);
-  } else if (interaction.commandName === "repeat") {
-    await handleRepeatCommand(interaction);
-  } else if (interaction.commandName === "shuffle") {
-    await handleShuffleCommand(interaction);
+  try {
+    await command.execute({ interaction, client });
+  } catch (error) {
+    console.error(error);
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp({
+        content: "There was an error while executing this command!",
+        ephemeral: true,
+      });
+    } else {
+      await interaction.reply({
+        content: "There was an error while executing this command!",
+        ephemeral: true,
+      });
+    }
   }
+});
+
+client.on("messageReactionAdd", async (reaction, user) => {
+  if (user.bot) return;
+
+  await xpSystem.addXP(
+    user.id,
+    reaction.message.guild.id,
+    xpSystem.messageXPAmount
+  );
 });
 
 module.exports = (oldPresence, newPresence) => {
@@ -70,4 +116,4 @@ module.exports = (oldPresence, newPresence) => {
 
 client.on("guildMemberUpdate", require("./events/guildMemberUpdate.js"));
 
-client.login(config.token);
+initializeBot().catch(console.error);

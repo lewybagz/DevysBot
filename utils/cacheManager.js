@@ -17,7 +17,6 @@ class CacheManager {
     try {
       const roles = await guild.roles.fetch();
       this.roles = roles;
-      console.log(`Cached ${this.roles.size} roles from guild ${guild.name}.`);
     } catch (error) {
       console.error(`Error caching guild roles for ${guild.name}:`, error);
     }
@@ -55,7 +54,7 @@ class CacheManager {
 
   // Add a new member to the cache
   cacheMember(member) {
-    if (!member || !member.user) {
+    if (!member || typeof member.id !== "string") {
       console.error("Invalid member object provided to cacheMember");
       return;
     }
@@ -100,9 +99,6 @@ class CacheManager {
     if (count > this.peakOnline) {
       this.peakOnline = count;
     }
-    console.log(
-      `Online count set to ${count}. Peak online: ${this.peakOnline}`
-    );
   }
 
   // Get all user IDs who have a specific role

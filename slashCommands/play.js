@@ -1,112 +1,196 @@
-const {
-  joinVoiceChannel,
-  createAudioPlayer,
-  createAudioResource,
-  AudioPlayerStatus,
-} = require("@discordjs/voice");
+const { SlashCommandBuilder } = require("@discordjs/builders");
 const { EmbedBuilder } = require("discord.js");
-const play = require("play-dl");
+const { QueryType } = require("discord-player");
 
-let player;
+module.exports = {
+  data: new SlashCommandBuilder()
+    .setName("play")
+    .setDescription("Plays a song.")
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("search")
+        .setDescription("Searches for a song.")
+        .addStringOption((option) =>
+          option
+            .setName("searchterms")
+            .setDescription("search keywords")
+            .setRequired(true)
+        )
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("playlist")
+        .setDescription("Plays playlist from YT")
+        .addStringOption((option) =>
+          option.setName("url").setDescription("playlist url").setRequired(true)
+        )
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("song")
+        .setDescription("Plays song from YT")
+        .addStringOption((option) =>
+          option
+            .setName("url")
+            .setDescription("url of the song")
+            .setRequired(true)
+        )
+    ),
+  execute: async ({ interaction }) => {
+    if (!interaction.guild) {
+      await interaction.reply("This command can only be used in a server.");
+      return;
+    }
 
-async function handlePlayCommand(interaction, client, musicState) {
-  const url = interaction.options.getString("url");
-  const voiceChannel = interaction.member.voice.channel;
-  const guildId = interaction.guild.id;
+    const member =
+      interaction.member ??
+      (await interaction.guild.members.fetch(interaction.user.id));
 
-  if (!voiceChannel) {
-    return interaction.reply(
-      "You need to be in a voice channel to use this command!"
-    );
-  }
-
-  // Check if the provided URL is a valid YouTube link
-  if (!play.yt_validate(url)) {
-    return interaction.reply(
-      "Please provide a valid YouTube video or playlist link."
-    );
-  }
-
-  let { connection, playlistQueue } = musicState.get(guildId);
-
-  // Join the voice channel
-  if (!connection) {
-    connection = joinVoiceChannel({
-      channelId: voiceChannel.id,
-      guildId: interaction.guild.id,
-      adapterCreator: interaction.guild.voiceAdapterCreator,
-    });
-    musicState.set(guildId, { connection, playlistQueue });
-  }
-
-  if (play.is_playlist(url)) {
-    const playlist = await play.playlist_info(url);
-    playlistQueue.push(...playlist.videos.map((video) => video.url));
-    musicState.set(guildId, { connection, playlistQueue });
-  } else {
-    playlistQueue.push(url);
-    musicState.set(guildId, { connection, playlistQueue });
-  }
-
-  // Create the player only if it doesn't exist already
-  if (!player) {
-    player = createAudioPlayer();
-  }
-  connection.subscribe(player);
-
-  // Play the provided video or fetch playlist first video
-  await playVideo(url, player, connection, interaction, client);
-}
-
-async function playVideo(url, player, connection, interaction, client) {
-  try {
-    // Fetch video stream
-    const streamInfo = await play.stream(url);
-    const resource = createAudioResource(streamInfo.stream, {
-      inputType: streamInfo.type,
-    });
-
-    // Play the current video
-    player.play(resource);
-
-    // Send the response to the user
-    const videoInfo = await play.video_info(url);
-
-    const embed = new EmbedBuilder()
-      .setColor("#1E90FF") // Blue color
-      .setTitle("Now Playing")
-      .setDescription(`**${videoInfo.video_details.title}**`) // Bold song title
-      .setURL(videoInfo.video_details.url) // URL to the video
-      .setTimestamp(); // Adds a timestamp at the bottom of the embed
-
-    // Send the embedded message as a follow-up
-    await interaction.followUp({ embeds: [embed] });
-
-    // Set custom activity for the bot (Now playing: video title)
-    client.user.setActivity(`Listening to: ${videoInfo.video_details.title}`, {
-      type: "LISTENING",
+    if (!member.voice.channel) {
+      await interaction.reply({
+        content: "You must be in a voice channel to use this command.",
+        ephemeral: true,
+      });
+      return;
+    }
+    const client = interaction.client;
+    const queue = client.player.nodes.create(interaction.guild, {
+      metadata: {
+        channel: interaction.channel,
+        client: interaction.guild.members.me,
+        requestedBy: interaction.user,
+      },
+      selfDeaf: true,
+      volume: 100,
+      leaveOnEmpty: true,
+      leaveOnEmptyCooldown: 300000,
+      leaveOnEnd: true,
+      leaveOnEndCooldown: 300000,
     });
 
-    // Handle when the current video ends
-    player.on(AudioPlayerStatus.Idle, async () => {
-      // Fetch related videos
-      const relatedVideos = await play.related(url);
-      if (relatedVideos && relatedVideos.length > 0) {
-        const nextVideo = relatedVideos[0]; // Get the first related video
-        await playVideo(nextVideo.url, player, connection, interaction); // Play the next related video
-      } else {
-        await interaction.followUp("No related videos found. Disconnecting...");
-        client.user.setActivity(
-          "Playing Operation LoveCraft: Fallen Doll(Ranked)",
-          { type: "PLAYING" }
-        );
-        connection.destroy(); // Leave the voice channel if no related videos are found
+    if (!queue.connection) {
+      if (!member.voice.channel) {
+        await interaction.reply({
+          content: "You must be in a voice channel to use this command.",
+          ephemeral: true,
+        });
+        return;
       }
-    });
-  } catch (error) {
-    console.error(`Error playing video: ${error}`);
-    connection.destroy(); // Leave the voice channel on error
-  }
-}
+      await queue.connect(member.voice.channel);
+    }
 
-module.exports = { handlePlayCommand, getPlayer: () => player };
+    let embed = new EmbedBuilder();
+
+    if (interaction.options.getSubcommand() === "song") {
+      let url = interaction.options.getString("url");
+      console.log("URL received:", url);
+
+      if (!url) {
+        return interaction.reply("Please provide a valid URL.");
+      }
+
+      try {
+        const result = await client.player.search(url, {
+          requestedBy: interaction.user,
+          searchEngine: QueryType.AUTO,
+        });
+
+        console.log("Search result:", result);
+
+        if (!result || !result.tracks.length) {
+          return interaction.reply({
+            content: "No results found!",
+            ephemeral: true,
+          });
+        }
+
+        const song = result.tracks[0];
+        console.log("Song to be added:", song);
+
+        const queue = client.player.nodes.create(interaction.guild, {
+          metadata: {
+            channel: interaction.channel,
+            client: interaction.guild.members.me,
+            requestedBy: interaction.user,
+          },
+        });
+
+        try {
+          if (!queue.connection)
+            await queue.connect(interaction.member.voice.channel);
+        } catch {
+          client.player.nodes.delete(interaction.guild.id);
+          return interaction.reply({
+            content: "Could not join your voice channel!",
+            ephemeral: true,
+          });
+        }
+
+        await queue.node.play(song);
+
+        const embed = new EmbedBuilder()
+          .setDescription(
+            `**[${song.title}](${song.url})** has been added to the Queue`
+          )
+          .setThumbnail(song.thumbnail)
+          .setFooter({ text: `Duration: ${song.duration}` });
+
+        return interaction.reply({ embeds: [embed] });
+      } catch (error) {
+        console.error("Error during song playback:", error);
+        return interaction.reply({
+          content: "An error occurred while trying to play the song.",
+          ephemeral: true,
+        });
+      }
+    } else if (interaction.options.getSubcommand() === "playlist") {
+      let url = interaction.options.getString("url");
+
+      const result = await client.player.search(url, {
+        requestedBy: interaction.user,
+        searchEngine: QueryType.AUTO,
+      });
+
+      if (!result || !result.tracks.length) {
+        return interaction.reply({
+          content: "No playlist found!",
+          ephemeral: true,
+        });
+      }
+
+      const playlist = result.playlist;
+      await queue.addTracks(result.tracks);
+
+      embed
+        .setDescription(
+          `Added **[${playlist.title}](${playlist.url})** to the queue.`
+        )
+        .setThumbnail(playlist.thumbnail)
+        .setFooter({ text: `Duration: ${playlist.duration}` });
+    } else if (interaction.options.getSubcommand() === "search") {
+      let query = interaction.options.getString("searchterms");
+      const result = await client.player.search(query, {
+        requestedBy: interaction.user,
+        searchEngine: QueryType.AUTO,
+      });
+
+      if (!result || !result.tracks.length) {
+        return interaction.reply("No results found!");
+      }
+
+      const song = result.tracks[0];
+      await queue.addTrack(song);
+
+      embed
+        .setDescription(`Added **[${song.title}](${song.url})** to the queue.`)
+        .setThumbnail(song.thumbnails[0].url)
+        .setFooter({ text: `Duration: ${song.durationRaw}` });
+    }
+
+    if (!queue.playing) await queue.play();
+
+    await interaction.reply({
+      embeds: [embed],
+    });
+  },
+};

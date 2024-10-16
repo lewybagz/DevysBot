@@ -1,9 +1,13 @@
 const cacheManager = require("../utils/cacheManager.js");
 const { updateChannelNames } = require("../utils/channelUpdater");
-const { registerCommands } = require("../utils/commandRegister");
+const { ActivityType } = require("discord.js");
+const XPSystem = require("../utils/xpSystem");
 
 module.exports = async (client) => {
   console.log(`Logged in as ${client.user.tag}!`);
+  const xpSystem = new XPSystem(client);
+  await xpSystem.loadXPData();
+  xpSystem.startVoiceXPTracker();
 
   await client.guilds.fetch();
 
@@ -35,28 +39,25 @@ module.exports = async (client) => {
 
   cacheManager.setOnlineCount(totalOnlineCount);
 
-  // Register commands after caching is complete
-  console.log("Starting command registration...");
-  await registerCommands(cacheManager);
-  console.log("Command registration complete.");
-  // Update the channel names when bot is ready
   updateChannelNames(client);
 
   // Set an interval to update the channel names every minute
   setInterval(() => {
     updateChannelNames(client);
-  }, 120000); // 1 minute interval
+  }, 120000);
 
   // Set the bot's presence (activity and status)
-  client.user.setPresence({
-    activities: [
-      {
-        name: "Playing Operation LoveCraft: Fallen Doll(Ranked)", // The message shown (e.g., "Playing Music in the Lounge")
-        type: "PLAYING", // The type of activity: 'PLAYING', 'LISTENING', 'WATCHING', etc.
-      },
-    ],
-    status: "online", // Bot's status: 'online', 'idle', 'dnd', or 'invisible'
-  });
-
-  console.log("Bot presence set!");
+  try {
+    await client.user.setPresence({
+      activities: [
+        {
+          name: "Operation LoveCraft: Fallen Doll(Ranked)",
+          type: ActivityType.Competing,
+        },
+      ],
+      status: "online",
+    });
+  } catch (error) {
+    console.error("Failed to set bot presence:", error);
+  }
 };
