@@ -2,16 +2,16 @@ const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { fetchPlayerRank } = require("../utils/rocketLeagueApi");
 const { getRankEmblemUrl } = require("../utils/rankEmblems");
 
-async function handleRankCommand(interaction) {
-  await interaction.deferReply();
+async function handleRankCommand(interactionaction) {
+  await interactionaction.deferReply();
 
-  const username = interaction.options.getString("username");
+  const username = interactionaction.options.getString("username");
 
   try {
     const rankData = await fetchPlayerRank(username);
 
     if (!rankData.ranks || rankData.ranks.length === 0) {
-      await interaction.editReply("No rank data found for this player.");
+      await interactionaction.editReply("No rank data found for this player.");
       return;
     }
 
@@ -69,19 +69,19 @@ async function handleRankCommand(interaction) {
       });
     }
 
-    await interaction.editReply({ embeds: [embed] });
+    await interactionaction.editReply({ embeds: [embed] });
   } catch (error) {
     console.error("Error in rank command:", error);
     if (error.message.includes("API request failed after multiple retries")) {
-      await interaction.editReply(
+      await interactionaction.editReply(
         "The Rocket League API is currently experiencing issues. Please try again later."
       );
     } else if (error.message.includes("No player found")) {
-      await interaction.editReply(
+      await interactionaction.editReply(
         `No player found with the username: ${username}. Please check the spelling and try again.`
       );
     } else {
-      await interaction.editReply(
+      await interactionaction.editReply(
         "An error occurred while fetching the player rank. Please try again later."
       );
     }

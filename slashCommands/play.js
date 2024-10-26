@@ -1,205 +1,93 @@
-const { SlashCommandBuilder } = require("@discordjs/builders");
-const { EmbedBuilder } = require("discord.js");
-const { QueryType } = require("discord-player");
+const { QueryType, useMainPlayer } = require("discord-player");
+const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { Translate } = require("../process_tools");
+const config = require("../config");
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("play")
-    .setDescription("Plays a song.")
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("search")
-        .setDescription("Searches for a song.")
-        .addStringOption((option) =>
-          option
-            .setName("searchterms")
-            .setDescription("search keywords")
-            .setRequired(true)
-        )
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("playlist")
-        .setDescription("Plays playlist from YT")
-        .addStringOption((option) =>
-          option.setName("url").setDescription("playlist url").setRequired(true)
-        )
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
+    .setDescription("Play a song!")
+    .addStringOption((option) =>
+      option
         .setName("song")
-        .setDescription("Plays song from YT")
-        .addStringOption((option) =>
-          option
-            .setName("url")
-            .setDescription("url of the song")
-            .setRequired(true)
-        )
+        .setDescription("The song you want to play")
+        .setRequired(true)
+        .setAutocomplete(true)
     ),
-  execute: async ({ interaction }) => {
-    if (!interaction.guild.members.me.permissions.has(['CONNECT', 'SPEAK'])) {
-      return interaction.reply({
-        content: 'I need permission to connect and speak in this voice channel!',
-        ephemeral: true,
-      });
-    }
 
-
-    const member =
-      interaction.member ??
-      (await interaction.guild.members.fetch(interaction.user.id));
-
-    if (!member.voice.channel) {
-      await interaction.reply({
-        content: "You must be in a voice channel to use this command.",
-        ephemeral: true,
-      });
-      return;
-    }
-    const client = interaction.client;
-    const queue = client.player.nodes.create(interaction.guild, {
-      metadata: {
-        channel: interaction.channel,
-        client: interaction.guild.members.me,
-        requestedBy: interaction.user,
-      },
-      selfDeaf: false, // <--- THIS LINE was true
-      volume: 100,
-      leaveOnEmpty: true,
-      leaveOnEmptyCooldown: 300000,
-      leaveOnEnd: true,
-      leaveOnEndCooldown: 300000,
-    });
-
-
-    if (!queue.connection) {
-      if (!member.voice.channel) {
-        await interaction.reply({
-          content: "You must be in a voice channel to use this command.",
+  async execute({ interaction }) {
+    try {
+      if (!interaction.member.voice.channel) {
+        return interaction.editReply({
+          content: await Translate("You need to be in a voice channel! ❌"),
           ephemeral: true,
         });
-        return;
       }
-      await queue.connect(member.voice.channel);
-    }
 
-    let embed = new EmbedBuilder();
+      const player = useMainPlayer();
 
-    if (interaction.options.getSubcommand() === "song") {
-      let url = interaction.options.getString("url");
-      console.log("URL received:", url);
+      // Make sure player is properly initialized
+      if (!player) {
+        throw new Error("Player not initialized");
+      }
 
-      if (!url) {
-        return interaction.reply("Please provide a valid URL.");
+      const song = interaction.options.getString("song");
+      const res = await player.search(song, {
+        requestedBy: interaction.user,
+        searchEngine: QueryType.AUTO,
+      });
+
+      const defaultEmbed = new EmbedBuilder().setColor("#2f3136");
+
+      if (!res || !res.tracks.length) {
+        defaultEmbed.setDescription(
+          await Translate("No results found... try again? ❌")
+        );
+        return interaction.editReply({ embeds: [defaultEmbed] });
       }
 
       try {
-        const result = await client.player.search(url, {
-          requestedBy: interaction.user,
-          searchEngine: QueryType.AUTO,
-        });
-
-        console.log("Search result:", result);
-
-        if (!result || !result.tracks.length) {
-          return interaction.reply({
-            content: "No results found!",
-            ephemeral: true,
-          });
-        }
-
-        const song = result.tracks[0];
-        console.log("Song to be added:", song);
-
-        const queue = client.player.nodes.get(interaction.guild.id) || 
-        client.player.nodes.create(interaction.guild, {
-          metadata: {
-            channel: interaction.channel,
-            client: interaction.guild.members.me,
-            requestedBy: interaction.user,
+        await player.play(interaction.member.voice.channel, res.tracks[0], {
+          nodeOptions: {
+            metadata: interaction.channel,
+            volume: config.opt?.volume || 100,
+            leaveOnEmpty: config.opt?.leaveOnEmpty || true,
+            leaveOnEmptyCooldown: config.opt?.leaveOnEmptyCooldown || 300000,
+            leaveOnEnd: config.opt?.leaveOnEnd || true,
+            leaveOnEndCooldown: config.opt?.leaveOnEndCooldown || 300000,
+            // Add these options for better audio handling
+            bufferingTimeout: 15000,
+            skipOnNoStream: true,
+            connectionTimeout: 30000,
           },
-          selfDeaf: false,  // Make sure this is set
         });
 
-
-        try {
-          if (!queue.connection)
-            await queue.connect(interaction.member.voice.channel);
-        } catch {
-          client.player.nodes.delete(interaction.guild.id);
-          return interaction.reply({
-            content: "Could not join your voice channel!",
-            ephemeral: true,
-          });
-        }
-
-        await queue.node.play(song);
-
-        const embed = new EmbedBuilder()
+        defaultEmbed
           .setDescription(
-            `**[${song.title}](${song.url})** has been added to the Queue`
+            await Translate(
+              `Loading **${res.tracks[0].title}** to the queue... ✅`
+            )
           )
-          .setThumbnail(song.thumbnail)
-          .setFooter({ text: `Duration: ${song.duration}` });
+          .setThumbnail(res.tracks[0].thumbnail);
 
-        return interaction.reply({ embeds: [embed] });
+        return interaction.editReply({ embeds: [defaultEmbed] });
       } catch (error) {
-        console.error("Error during song playback:", error);
-        return interaction.reply({
-          content: "An error occurred while trying to play the song.",
-          ephemeral: true,
-        });
+        console.error("Play error:", error);
+        defaultEmbed.setDescription(
+          await Translate(
+            "Unable to join the voice channel or play the track. Please try again. ❌"
+          )
+        );
+        return interaction.editReply({ embeds: [defaultEmbed] });
       }
-    } else if (interaction.options.getSubcommand() === "playlist") {
-      let url = interaction.options.getString("url");
-
-      const result = await client.player.search(url, {
-        requestedBy: interaction.user,
-        searchEngine: QueryType.AUTO,
+    } catch (error) {
+      console.error("Command error:", error);
+      return interaction.editReply({
+        content: await Translate(
+          "An error occurred while processing your request. ❌"
+        ),
+        ephemeral: true,
       });
-
-      if (!result || !result.tracks.length) {
-        return interaction.reply({
-          content: "No playlist found!",
-          ephemeral: true,
-        });
-      }
-
-      const playlist = result.playlist;
-      await queue.addTracks(result.tracks);
-
-      embed
-        .setDescription(
-          `Added **[${playlist.title}](${playlist.url})** to the queue.`
-        )
-        .setThumbnail(playlist.thumbnail)
-        .setFooter({ text: `Duration: ${playlist.duration}` });
-    } else if (interaction.options.getSubcommand() === "search") {
-      let query = interaction.options.getString("searchterms");
-      const result = await client.player.search(query, {
-        requestedBy: interaction.user,
-        searchEngine: QueryType.AUTO,
-      });
-
-      if (!result || !result.tracks.length) {
-        return interaction.reply("No results found!");
-      }
-
-      const song = result.tracks[0];
-      await queue.addTrack(song);
-
-      embed
-        .setDescription(`Added **[${song.title}](${song.url})** to the queue.`)
-        .setThumbnail(song.thumbnails[0].url)
-        .setFooter({ text: `Duration: ${song.durationRaw}` });
     }
-
-    console.log('Is the queue playing:', queue.playing);
-    if (!queue.playing) await queue.play();
-
-
-    await interaction.reply({
-      embeds: [embed],
-    });
   },
 };

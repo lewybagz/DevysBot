@@ -41,7 +41,7 @@ module.exports = async (client) => {
 
   updateChannelNames(client);
 
-  // Set an interval to update the channel names every minute
+  // Set an interactionval to update the channel names every minute
   setInterval(() => {
     updateChannelNames(client);
   }, 120000);

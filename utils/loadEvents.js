@@ -9,20 +9,13 @@ module.exports = (client) => {
     .filter((file) => file.endsWith(".js"));
 
   for (const file of eventFiles) {
-    const eventModule = require(`../events/${file}`);
+    const event = require(`../events/${file}`);
     const eventName = file.split(".")[0];
+
     if (eventName === "ready") {
-      client.once(eventName, (...args) => eventModule(client, ...args));
+      client.once(eventName, (...args) => event(client, ...args));
     } else {
-      client.on(eventName, (...args) => {
-        const handler =
-          typeof eventModule === "function" ? eventModule(client) : eventModule;
-        if (typeof handler === "function") {
-          handler(...args);
-        } else {
-          console.error(`Invalid event handler for ${eventName}`);
-        }
-      });
+      client.on(eventName, async (...args) => event(client, ...args));
     }
   }
 };

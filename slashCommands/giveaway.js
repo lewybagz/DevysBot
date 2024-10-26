@@ -31,14 +31,15 @@ module.exports = {
   execute: handleGiveawayCommand,
 };
 
-async function handleGiveawayCommand(interaction, client) {
+async function handleGiveawayCommand(interactionaction, client) {
   try {
-    await interaction.deferReply({ ephemeral: true });
+    await interactionaction.deferReply({ ephemeral: true });
 
     // Fetch configuration variables
-    const numberOfWinners = interaction.options.getInteger("winners") || 1;
-    const role1 = interaction.options.getRole("role1");
-    const role2 = interaction.options.getRole("role2");
+    const numberOfWinners =
+      interactionaction.options.getInteger("winners") || 1;
+    const role1 = interactionaction.options.getRole("role1");
+    const role2 = interactionaction.options.getRole("role2");
 
     // Collect participants with at least one of the selected roles
     let participantIds = new Set();
@@ -56,14 +57,14 @@ async function handleGiveawayCommand(interaction, client) {
     participantIds = Array.from(participantIds);
 
     if (participantIds.length === 0) {
-      await interaction.editReply(
+      await interactionaction.editReply(
         "No participants found with the specified role(s)."
       );
       return;
     }
 
     if (numberOfWinners > participantIds.length) {
-      await interaction.editReply(
+      await interactionaction.editReply(
         `Not enough participants to select ${numberOfWinners} winner(s).`
       );
       return;
@@ -75,7 +76,7 @@ async function handleGiveawayCommand(interaction, client) {
     // Get winner usernames
     const winnerDetails = await Promise.all(
       winnerIds.map(async (userId) => {
-        const member = await interaction.guild.members.fetch(userId);
+        const member = await interactionaction.guild.members.fetch(userId);
         return {
           name: `${member.user.username} 🏆`,
           inline: false,
@@ -94,7 +95,7 @@ async function handleGiveawayCommand(interaction, client) {
       }
     } catch (channelError) {
       console.error("Error fetching giveaway channel:", channelError);
-      await interaction.editReply(
+      await interactionaction.editReply(
         "Failed to fetch the giveaway channel. Please check the channel ID in the configuration."
       );
       return;
@@ -146,10 +147,12 @@ async function handleGiveawayCommand(interaction, client) {
     }
 
     // Confirm the giveaway to the command user
-    await interaction.editReply("Giveaway completed and winner(s) announced!");
+    await interactionaction.editReply(
+      "Giveaway completed and winner(s) announced!"
+    );
   } catch (error) {
     console.error("Error during giveaway:", error);
-    await interaction.editReply(
+    await interactionaction.editReply(
       "An error occurred while running the giveaway."
     );
   }
